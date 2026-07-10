@@ -19,7 +19,6 @@ return new class extends Migration
             $table->string('title');
             $table->text('description')->nullable();
             $table->date('due_date')->nullable();
-            $table->string('email', 191)->unique();
             $table->enum('priority', ['LOW', 'MEDIUM', 'HIGH'])
               ->default('MEDIUM');
 

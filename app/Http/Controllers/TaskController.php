@@ -205,12 +205,11 @@ Return ONLY valid JSON like:
             ], 503);
         }
 
-        if ($response->failed()) {
-            report(new \RuntimeException("Gemini API error ({$response->status()}): {$response->body()}"));
-
+            if ($response->failed()) {
             return response()->json([
-                'message' => 'The AI service returned an error. Please try again later.'
-            ], 502);
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ], 500);
         }
 
         $text = $response->json('candidates.0.content.parts.0.text');
