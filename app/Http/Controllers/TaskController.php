@@ -158,12 +158,12 @@ class TaskController extends Controller
         ]);
     }
     public function aiSuggest(Request $request)
-    {
-        $request->validate([
-            'title' => 'required|string|max:255'
-        ]);
+{
+    $request->validate([
+        'title' => 'required|string|max:255'
+    ]);
 
-        $prompt = "
+    $prompt = "
 A user entered the following task title:
 
 {$request->title}
@@ -173,74 +173,78 @@ Generate:
 1. A professional task description.
 2. A suitable priority (LOW, MEDIUM or HIGH).
 
-Return ONLY valid JSON like:
+Return ONLY valid JSON like this:
 
 {
-    \"description\":\"...\",
-    \"priority\":\"HIGH\"
+    \"description\": \"...\",
+    \"priority\": \"HIGH\"
 }
 ";
 
-        try {
-            $response = Http::timeout(30)
-                ->post(
-                    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" . env('GEMINI_API_KEY'),
+    try {
+
+        $response = Http::withHeaders([
+            'Content-Type' => 'application/json',
+        ])->timeout(30)->post(
+            'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . env('GEMINI_API_KEY'),
+            [
+                'contents' => [
                     [
-                        "contents" => [
+                        'parts' => [
                             [
-                                "parts" => [
-                                    [
-                                        "text" => $prompt
-                                    ]
-                                ]
+                                'text' => $prompt
                             ]
                         ]
                     ]
-                );
-        } catch (\Throwable $e) {
-            report($e);
+                ],
+                'generationConfig' => [
+                    'responseMimeType' => 'application/json'
+                ]
+            ]
+        );
 
-            return response()->json([
-                'message' => 'Unable to reach the AI service. Please try again later.'
-            ], 503);
-        }
+    } catch (\Throwable $e) {
 
-            if ($response->failed()) {
-            return response()->json([
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ], 500);
-        }
-
-        $text = $response->json('candidates.0.content.parts.0.text');
-
-        if (!$text) {
-            report(new \RuntimeException("Unexpected Gemini response shape: {$response->body()}"));
-
-            return response()->json([
-                'message' => 'The AI service returned an unexpected response.'
-            ], 502);
-        }
-
-        $cleaned = trim(preg_replace('/^```(?:json)?|```$/m', '', $text));
-        $suggestion = json_decode($cleaned, true);
-
-        if (
-            !is_array($suggestion)
-            || !isset($suggestion['description'], $suggestion['priority'])
-            || !in_array($suggestion['priority'], ['LOW', 'MEDIUM', 'HIGH'], true)
-        ) {
-            report(new \RuntimeException("Could not parse Gemini suggestion: {$text}"));
-
-            return response()->json([
-                'message' => 'The AI service returned an unexpected response.'
-            ], 502);
-        }
+        report($e);
 
         return response()->json([
-            'description' => $suggestion['description'],
-            'priority' => $suggestion['priority'],
-        ]);
+            'message' => 'Unable to reach the AI service.'
+        ], 503);
     }
+
+    if ($response->failed()) {
+
+        return response()->json([
+            'status' => $response->status(),
+            'body' => $response->body(),
+        ], 500);
+    }
+
+    $text = $response->json('candidates.0.content.parts.0.text');
+
+    if (!$text) {
+
+        return response()->json([
+            'message' => 'No response received from AI.',
+            'response' => $response->json()
+        ], 500);
+    }
+
+    $suggestion = json_decode($text, true);
+
+    if (json_last_error() !== JSON_ERROR_NONE) {
+
+        return response()->json([
+            'message' => 'Invalid JSON returned by AI.',
+            'raw' => $text
+        ], 500);
+    }
+
+    return response()->json([
+        'description' => $suggestion['description'] ?? '',
+        'priority' => $suggestion['priority'] ?? 'MEDIUM'
+    ]);
+}
+  
 
 }
